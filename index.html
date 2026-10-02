@@ -7,98 +7,112 @@
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background-color: #f7f9fa;
+      background-color: #f0f2f5;
       display: flex;
+      flex-direction: column;
       justify-content: center;
       align-items: center;
       min-height: 100vh;
       margin: 0;
       padding: 20px;
+      box-sizing: border-box;
     }
     .card {
       background: #ffffff;
-      border-radius: 16px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+      border-radius: 20px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.1);
       padding: 24px;
       text-align: center;
-      max-width: 360px;
+      max-width: 340px;
       width: 100%;
+      box-sizing: border-box;
     }
     .profile-img {
-      width: 80px;
-      height: 80px;
+      width: 84px;
+      height: 84px;
       border-radius: 50%;
+      object-fit: cover;
+      border: 3px solid #ffb74d;
       margin-bottom: 12px;
     }
     .user-name {
-      font-size: 20px;
+      font-size: 22px;
       font-weight: bold;
-      color: #333;
-      margin: 0 0 4px 0;
+      color: #2c3e50;
+      margin: 0 0 6px 0;
     }
     .title-tag {
       display: inline-block;
       background: #ffe0b2;
       color: #e65100;
-      padding: 4px 12px;
-      border-radius: 12px;
-      font-size: 13px;
+      padding: 4px 14px;
+      border-radius: 20px;
+      font-size: 14px;
       font-weight: bold;
       margin-bottom: 20px;
     }
     .barcode-container {
-      background: #fafafa;
-      border: 1px dashed #cccccc;
-      border-radius: 12px;
+      background: #f9f9f9;
+      border: 2px dashed #e0e0e0;
+      border-radius: 14px;
       padding: 16px;
       margin-bottom: 12px;
     }
+    #barcodeCanvas {
+      max-width: 100%;
+    }
     #countdown {
       font-size: 13px;
-      color: #777777;
+      color: #888888;
+      margin-top: 6px;
+    }
+    .notice {
+      font-size: 12px;
+      color: #aaa;
     }
   </style>
-  <!-- 引入 LINE LIFF SDK 與 JsBarcode 繪圖套件 -->
+  <!-- 載入 LINE SDK 與 條碼套件 -->
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
 </head>
 <body>
 
   <div class="card">
-    <img id="userPicture" class="profile-img" src="https://via.placeholder.com/80" alt="大頭照">
-    <h2 id="userName" class="user-name">載入中...</h2>
-    <span class="title-tag">🐾 萌寵打工仔</span>
+    <!-- 預設頭像 -->
+    <img id="userPicture" class="profile-img" src="https://api.dicebear.com/7.x/bottts/svg?seed=PetJob" alt="毛孩大頭照">
+    <h2 id="userName" class="user-name">PET JOB 打工仔</h2>
+    <span class="title-tag">🐾 星萌克資深實習生</span>
 
     <div class="barcode-container">
       <svg id="barcodeCanvas"></svg>
-      <div id="countdown">條碼產生中...</div>
+      <div id="countdown">正在生成動態核銷碼...</div>
     </div>
+    <div class="notice">※ 請勿截圖，條碼自動刷新即可核銷</div>
   </div>
 
   <script>
-    // ⚠️ 請把引號內的網址換成步驟 2 部署後取得的 Web App URL
-    const GAS_API_URL = "https://script.google.com/macros/s/AKfycbx_4LEmaLpOrdqoZeLWOZJvd_E_WYqNqcD67JOy1-vbD9O9XiaiaaJsdYYXl6lx41wy/exec";
+    // 您的 Google Apps Script Web App 網址
+    const GAS_API_URL = "https://script.google.com/macros/s/AKfycbx_4LEmaLpOraqZoZeLWOZJvd_E_WYqNqcD67JOy1-vbD909XiaiaaJsdYYX161x41wy/exec";
 
     async function initLIFF() {
       try {
-        // 初始化 LIFF SDK
         await liff.init({ liffId: "2011800095-eb02a9W4" });
 
-        if (!liff.isLoggedIn()) {
-          liff.login(); // 若未登入自動導向 LINE 登入畫面
-        } else {
-          // 取得用戶 LINE Profile 資料
+        if (liff.isLoggedIn()) {
           const profile = await liff.getProfile();
           document.getElementById("userName").innerText = profile.displayName;
           if (profile.pictureUrl) {
             document.getElementById("userPicture").src = profile.pictureUrl;
           }
-
-          // 向 GAS 後台索取 60 秒動態驗證碼
           fetchDynamicToken(profile.userId);
+        } else {
+          // 若在外部瀏覽器則自動跳轉 LINE 登入
+          liff.login();
         }
       } catch (err) {
         console.error("LIFF 初始化失敗：", err);
+        // 若 LIFF 初始化失敗，依然帶入預設條碼
+        fetchDynamicToken("GUEST_USER");
       }
     }
 
@@ -113,24 +127,21 @@
       .then(res => res.json())
       .then(data => {
         if (data.status === "success") {
-          // 繪製條碼到 <svg id="barcodeCanvas"> 上
           JsBarcode("#barcodeCanvas", data.dynamicToken, {
             format: "CODE128",
             height: 70,
             displayValue: true,
-            fontSize: 14
+            fontSize: 13
           });
-
-          document.getElementById("countdown").innerText = `刷新倒數：${data.expiresIn} 秒`;
-
-          // 每 30 秒向後台重新整理動態條碼
+          document.getElementById("countdown").innerText = `條碼刷新剩餘：${data.expiresIn} 秒`;
           setTimeout(() => fetchDynamicToken(userId), 30000);
         }
       })
-      .catch(err => console.error("抓取動態條碼失敗：", err));
+      .catch(err => {
+        console.error("抓取 Token 失敗：", err);
+      });
     }
 
-    // 啟動 LIFF
     initLIFF();
   </script>
 
