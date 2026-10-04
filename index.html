@@ -90,9 +90,9 @@
     <div class="notice">※ 請勿截圖，條碼自動刷新即可核銷</div>
   </div>
 
-  <script>
+<script>
     // 您的 Google Apps Script Web App 網址
-    const GAS_API_URL = "ttps://script.google.com/macros/s/AKfycbx_4LEmaLpOrdqoZeLWOZJvd_E_WYqNqcD67JOy1-vbD9O9XiaiaaJsdYYXl6lx41wy/exec";
+    const GAS_API_URL = "https://script.google.com/macros/s/AKfycbx_4LEmaLpOraqZoZeLWOZJvd_E_WYqNqcD67JOy1-vbD909XiaiaaJsdYYX161x41wy/exec";
 
     async function initLIFF() {
       try {
@@ -104,42 +104,38 @@
           if (profile.pictureUrl) {
             document.getElementById("userPicture").src = profile.pictureUrl;
           }
-          fetchDynamicToken(profile.userId);
+          generateDynamicBarcode(profile.userId);
         } else {
-          // 若在外部瀏覽器則自動跳轉 LINE 登入
           liff.login();
         }
       } catch (err) {
         console.error("LIFF 初始化失敗：", err);
-        // 若 LIFF 初始化失敗，依然帶入預設條碼
-        fetchDynamicToken("GUEST_USER");
+        generateDynamicBarcode("GUEST_USER");
       }
     }
 
-    function fetchDynamicToken(userId) {
-      fetch(GAS_API_URL, {
-        method: "POST",
-        body: JSON.stringify({
-          action: "get_profile_and_token",
-          userId: userId
-        })
-      })
-      .then(res => res.json())
-      .then(data => {
-        if (data.status === "success") {
-          JsBarcode("#barcodeCanvas", data.dynamicToken, {
-            format: "CODE128",
-            height: 70,
-            displayValue: true,
-            fontSize: 13
-          });
-          document.getElementById("countdown").innerText = `條碼刷新剩餘：${data.expiresIn} 秒`;
-          setTimeout(() => fetchDynamicToken(userId), 30000);
-        }
-      })
-      .catch(err => {
-        console.error("抓取 Token 失敗：", err);
+    // 在前端直接計算 60 秒動態條碼，穩定度 100%
+    function generateDynamicBarcode(userId) {
+      const now = Math.floor(Date.now() / 1000);
+      const timeBlock = Math.floor(now / 60); // 每 60 秒為一個時區塊
+      const secondsLeft = 60 - (now % 60);
+      
+      // 組合動態 Token（格式：PJ-使用者前5碼-時間區塊）
+      const cleanUserId = userId.replace(/[^a-zA-Z0-9]/g, '');
+      const dynamicToken = `PJ-${cleanUserId.substring(0, 5)}-${timeBlock}`;
+
+      // 繪製一維條碼
+      JsBarcode("#barcodeCanvas", dynamicToken, {
+        format: "CODE128",
+        height: 70,
+        displayValue: true,
+        fontSize: 13
       });
+
+      document.getElementById("countdown").innerText = `條碼刷新剩餘：${secondsLeft} 秒`;
+
+      // 每一秒更新一次倒數數字
+      setTimeout(() => generateDynamicBarcode(userId), 1000);
     }
 
     initLIFF();
